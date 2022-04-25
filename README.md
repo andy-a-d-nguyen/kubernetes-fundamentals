@@ -34,6 +34,21 @@
   - [Deployment Options](#deployment-options)
     - [Updating a Deployment (Rolling Update)](#updating-a-deployment-rolling-update)
   - [Services](#services)
+    - [Service Types](#service-types)
+      - [ClusterIP Service](#clusterip-service)
+      - [NodePort Service](#nodeport-service)
+      - [LoadBalancer Service](#loadbalancer-service)
+      - [ExternalName Service](#externalname-service)
+    - [Port Forwarding](#port-forwarding)
+    - [Defining a Service with YAML](#defining-a-service-with-yaml)
+      - [Connecting to a Service by its DNS Name](#connecting-to-a-service-by-its-dns-name)
+      - [Creating a NodePort Service](#creating-a-nodeport-service)
+      - [Creating a LoadBalancer Service](#creating-a-loadbalancer-service)
+      - [Creating an ExternalName Service](#creating-an-externalname-service)
+    - [Creating a Service](#creating-a-service)
+    - [Updating or Creating a Service](#updating-or-creating-a-service)
+    - [Deleting a Service](#deleting-a-service)
+    - [Testing a Service and Pod with curl](#testing-a-service-and-pod-with-curl)
 
 ## Key Features
 
@@ -535,3 +550,193 @@ kubectl apply -f file.deployment.yaml
 Ex:
 
 External caller -> Service (label: frontend, IP: 10.0.0.1:80) -> Pod (label: frontend, IP: 10.0.0.43:8080) -> Service (label: backend, IP: 10.2.0.1:9000) -> Pod (label: backend, IP: 10.2.0.10:27017)
+
+### Service Types
+
+- Services can be defined in different ways:
+  - ClusterIP - Expose the service on a cluster-internal IP (default)
+  - NodePort - Expose the service on each Node's IP at a static port
+  - LoadBalancer - Provision an external IP to act as a load balancer for the service
+  - ExternalName - Maps a service to a DNS name
+
+#### ClusterIP Service
+
+- Service IP is exposed internally within the cluster
+- Only Pods within the cluster can talk to the Service
+- Allows Pods to talk to other Pods
+
+Service -> Pod -> Service -> Pod
+
+#### NodePort Service
+
+- Exposes the Service on each Node's IP at a static port
+- Allocates a port from a range (default is 30000 - 32767)
+- Each Node proxies the allocated port
+
+External caller -> Node (port 30100) -> Service (NodePort) -> Pod
+
+#### LoadBalancer Service
+
+- Exposes a Service externally
+- Useful when combined with a cloud provider's load balancer
+- NodePort and ClusterIP Services are created
+- Each Node proxies the allocated port
+
+External caller -> LoadBalancer (x.x.x.x:80) -> Node (port 30105) -> Service (NodePort)
+
+#### ExternalName Service
+
+- Service that acts as an alias for an external service
+- Allows a Service to act as the proxy for an external service
+- External service details are hidden from cluster (easier to change)
+
+Service -> Pod -> Service (ExternalName) -> External Service
+
+### Port Forwarding
+
+- Use the `kubectl port-forward` command to forward a local port to a Pod port
+
+Ex:
+
+```bash
+# Listen on port 8080 locally and forward to port 80 in Pod
+kubectl port-forward pod/[pod-name] 8080:80
+
+# Listen on port 8080 locally and forward to Deployment's Pod
+kubectl port-forward deployment/[deployment-name] 8080
+
+# Listen on port 8080 locally and forward to Service's Pod
+kubectl port-forward service/[service-name] 8080
+```
+
+### Defining a Service with YAML
+
+```yml
+apiVersion: v1 # Kubernetes API version and resource type (Service)
+kind: Service
+metadata: # Metadata about the Service
+  spec:
+    type: # Type of service (ClusterIP, NodePort, LoadBalancer) - defaults to ClusterIP
+    selector: # Select Pod template label(s) that service will apply to
+    ports: # Define container target port and the port for the service
+```
+
+```yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  labels:
+    app: nginx
+spec:
+  selector: # Service will apply to resources with a label of app: nginx
+    app: nginx
+  ports: # Define container target port(s) and the port(s) for the Service
+  - name: http
+    port: 80
+    targetPort: 80
+```
+
+#### Connecting to a Service by its DNS Name
+
+```yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend # Name of Service (each Service gets a DNS entry)
+  ...
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend # A frontend Pod can access a backend Pod using backend:[port-number]
+  ...
+```
+
+#### Creating a NodePort Service
+
+```yml
+apiVersion: v1
+kind: Service
+metadata:
+  ...
+spec:
+  type: NodePort # Set Service type to NodePort
+  selector:
+    app: nginx
+  ports:
+  - port: 80
+    targetPort: 80
+    nodePort: 31000 # Optionally set NodePort value (defaults between 30000-32767)
+```
+
+#### Creating a LoadBalancer Service
+
+```yml
+apiVersion: v1
+kind: Service
+metadata:
+  ...
+spec:
+  type: LoadBalancer # Set Service type to LoadBalancer (normally used with cloud providers)
+  selector:
+    app: nginx
+  ports:
+  - port: 80
+    targetPort: 80
+```
+
+#### Creating an ExternalName Service
+
+```yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-service # Other Pods use this FQDN to access the external service
+spec:
+  type: ExternalName # Set type to ExternalName
+  externalName: api.acmecorp.com # Service will proxy to FQDN
+  ports:
+  - port: 9000
+```
+
+### Creating a Service
+
+- Use the `kubectl create` command along with the `--filename` or `-f` switch
+
+```bash
+# Creating a service
+kubectl create -f file.service.yml
+```
+
+### Updating or Creating a Service
+
+- Use the `kubectl apply` command along with the `--filename` or `-f` switch
+
+```bash
+# Updating a service assuming --save-config was used with create
+kubectl apply -f file.service.yml
+```
+
+### Deleting a Service
+
+- Use the `kubectl delete` command along with the `--filename` or `-f` switch
+
+```bash
+# Deleting a Service
+kubectl delete -f file.service.yml
+```
+
+### Testing a Service and Pod with curl
+
+- Use `kubectl exec` to shell into a Pod/Container
+
+```bash
+# Shell into a Pod and test a URL. Add -c [container-ID] in cases where multiple containers are running in the Pod
+kubectl exec [pod-name] --curl -s http://[pod-IP]
+
+# Install and use curl (example shown is for Alpine Linux)
+kubectl exec [pod-name] -it sh
+> apk add curl
+> curl -s http://[pod-IP]
+```
