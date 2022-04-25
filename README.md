@@ -23,6 +23,17 @@
     - [Defining an ExecAction Liveness Probe](#defining-an-execaction-liveness-probe)
     - [Defining a Readiness Probe](#defining-a-readiness-probe)
   - [Deployments](#deployments)
+    - [Defining a Deployment](#defining-a-deployment)
+    - [Defining Probes in a Deployment](#defining-probes-in-a-deployment)
+    - [Creating a Deployment](#creating-a-deployment)
+    - [Creating or Applying Changes to a Deployment](#creating-or-applying-changes-to-a-deployment)
+    - [Getting Deployments](#getting-deployments)
+      - [Deployments and Labels](#deployments-and-labels)
+    - [Deleting a Deployment](#deleting-a-deployment)
+    - [Scaling Pods Horizontally](#scaling-pods-horizontally)
+  - [Deployment Options](#deployment-options)
+    - [Updating a Deployment (Rolling Update)](#updating-a-deployment-rolling-update)
+  - [Services](#services)
 
 ## Key Features
 
@@ -354,3 +365,173 @@ spec:
   - Provides rollback functionality
   - Creates a unique label that is assigned to the ReplicaSet and generated Pods
   - YAML is very similar to a ReplicaSet
+
+### Defining a Deployment
+
+```yml
+apiVersion: apps/v1 # Kubernetes API version and resource type (Deployment)
+kind: Deployment
+metadata: # Metadata about the Deployment
+spec:
+  selector: # Select Pod template label(s)
+  template: # Template used to create the Pods
+    spec:
+      containers: # Containers that will run in the Pod
+      - name: my-nginx
+        image: nginx:alpine
+```
+
+```yml
+apiVersion: apps/v1 # Kubernetes API version and resource type (Deployment)
+kind: Deployment
+metadata: # Metadata about the Deployment
+  name: frontend
+  labels:
+    app: my-nginx
+    tier: frontend
+spec:
+  selector: # The selector is used to "select" the template to use (based on labels)
+    matchLabels:
+      tier: frontend
+  template: # Template to use to create the Pod/Containers (note that the selector matches the label)
+    metadata:
+      labels:
+        tier: frontend
+    spec:
+      containers:
+      - name: my-nginx
+        image: nginx:alpine
+```
+
+### Defining Probes in a Deployment
+
+```yml
+apiVersion: apps/v1
+kind: Deployment
+...
+template:
+  spec:
+    containers:
+    - name: my-nginx
+      image: nginx:alpine
+      livenessProbe: # Define liveness probe (readiness probes can also be defined)
+        httpGet:
+          path: /index.html
+          port: 80
+        initialDelaySeconds: 15
+        timeoutSeconds: 2
+        periodSeconds: 5
+        failureThreshold: 1
+```
+
+### Creating a Deployment
+
+- Use the `kubectl create` command along with the `--filename` or `-f` switch
+
+Ex:
+
+```bash
+kubectl create -f file.deployment.yml
+```
+
+### Creating or Applying Changes to a Deployment
+
+- Use the `kubectl apply` command along with the `--filename` or `-f` switch
+
+Ex:
+
+```bash
+# Alternate way to create or apply changes to a Deployment from YAML
+kubectl apply -f file.deployment.yml
+
+# Use --save-config when you want to use kubectl apply in the future
+kubectl create -f file.deployment.yml --save-config
+```
+
+### Getting Deployments
+
+```bash
+kubectl get deployments
+```
+
+#### Deployments and Labels
+
+- List the labels for all Deployments using the `--show-labels` switch
+- To get information about a Deployment with a specified label, use the `-l` switch
+
+```bash
+# List all Deployments and their labels
+kubectl get deployment --show-labels
+
+# Get all Deployments with a specified label
+kubectl get deployment -l app=nginx
+```
+
+### Deleting a Deployment
+
+- To delete a Deployment, use `kubectl delete`
+- Will delete the Deployment and all associated Pods/Containers
+
+```bash
+# Delete Deployment
+kubectl delete deployment [deployment-name]
+```
+
+### Scaling Pods Horizontally
+
+- Update the YAML file or use the `kubectl scale` command
+
+```bash
+# Scale the Deployment Pods to 5
+kubectl scale deployment [deployment-name] --replicas=5
+
+# Scale by referencing the YAML file
+kubectl scale -f file.deployment.yaml --replicas=5
+```
+
+```yml
+spec:
+  replicas: 3
+  selector:
+    tier: frontend
+```
+
+## Deployment Options
+
+- One of the strengths of Kubernetes is zero downtime deployments
+- Update an application's Pods without impacting end users
+- Several options are available:
+  - Rolling updates
+  - Blue-green deployments
+  - Canary deployments
+  - Rollbacks
+
+### Updating a Deployment (Rolling Update)
+
+- Update a Deployment by changing the YAML and applying changes to the cluster with `kubectl apply`
+
+```bash
+# Apply changes made in a YAML file
+kubectl apply -f file.deployment.yaml
+```
+
+## Services
+
+- A Service provides a single point of entry for accessing one or more Pods
+- Since Pods live and die, you can't rely on their IPs because they change
+- The life of Pods:
+  - Pods are "mortal" and may only live a short time (ephemeral)
+  - Pods can be horizontally scaled so each Pod gets its own IP address
+  - A Pod gets an IP address after it has been scheduled (no way for clients to know IP ahead of time)
+- The role of Services:
+  - Services abstract Pod IP addresses from consumers
+  - Load balances between Pods
+  - Relies on labels to associate a Service with a Pod
+  - Node's kube-proxy creates a virtual IP for Services
+  - Layer 4 (TCP/UPD over IP)
+  - Services are not ephemeral
+  - Creates endpoints which sit between a Service and Pod
+
+Ex:
+
+External caller -> Service (label: frontend, IP: 10.0.0.1:80) -> Pod (label: frontend, IP: 10.0.0.43:8080) -> Service (label: backend, IP: 10.2.0.1:9000) -> Pod (label: backend, IP: 10.2.0.10:27017)
