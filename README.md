@@ -49,6 +49,16 @@
     - [Updating or Creating a Service](#updating-or-creating-a-service)
     - [Deleting a Service](#deleting-a-service)
     - [Testing a Service and Pod with curl](#testing-a-service-and-pod-with-curl)
+  - [Storage](#storage)
+    - [Volumes](#volumes)
+      - [Volume Types Examples](#volume-types-examples)
+      - [Defining an emptyDir Volume](#defining-an-emptydir-volume)
+      - [Defining a hostPath Volume](#defining-a-hostpath-volume)
+      - [Defining an Azure File Volume](#defining-an-azure-file-volume)
+      - [Defining an AWS Volume](#defining-an-aws-volume)
+      - [Defining a Google Cloud gcePersistentDisk Volume](#defining-a-google-cloud-gcepersistentdisk-volume)
+    - [Viewing a Pod's Volumes](#viewing-a-pods-volumes)
+    - [PersistentVolumes and PersistentVolumeClaims](#persistentvolumes-and-persistentvolumeclaims)
 
 ## Key Features
 
@@ -740,3 +750,167 @@ kubectl exec [pod-name] -it sh
 > apk add curl
 > curl -s http://[pod-IP]
 ```
+
+## Storage
+
+- A Volume can be used to hold data and state for Pods and containers
+- Pods live and die so their file system is short-lived (ephemeral)
+- A Pod can have multiple Volumes attached to it
+- Containers rely on a mountPath to access a Volume
+- Kubernetes supports:
+  - Volumes
+  - PersistentVolumes
+  - PersistentVolumeClaims
+  - StorageClasses
+
+### Volumes
+
+- A Volume references a storage location
+- Must have a unique name
+- Attached to a Pod and may or may not be tied to the Pod's lifetime (depending on the Volume type)
+- A Volume Mount references a Volume by name and defines a mountPath
+
+#### Volume Types Examples
+
+- emptyDir - Empty directory for storing "transient" data (shares a Pod's lifetime) useful for sharing files between containers running in a Pod
+- hostPath - Pod mounts into a node's filesystem
+- nfs - An NFS (Network File System) share mounted into the Pod
+- configMap/secret - Special types of volumes that provide a Pod with access to Kubernetes resources
+- persistentVolumeClaim - Provides Pods with a more persistent storage option that is abstracted from the details
+- Cloud - Cluster-wide storage
+
+#### Defining an emptyDir Volume
+
+```yml
+apiVersion: v1
+kind: Pod
+spec:
+  volumes: # Define an initial Volume named "html" that is an empty directory (lifetime of the Pod)
+  - name: html
+    emptyDir: {}
+  containers:
+  - name: nginx:
+    image: nginx:alpine
+    volumeMounts: # Reference "html" Volume and define a mountPath
+    - name: html
+      mountPath: /usr/share/nginx/html
+      readOnly: true
+  - name: html-updater
+    image: alpine
+    command: ["/bin/sh", "-c"]
+    args:
+    - while true; do date >> /html/index.html; # Update file in Volume mount /html path with latest date every 10 seconds
+        sleep 10; done
+    volumeMounts: # Reference "html" Volume (defined above) and define a mountPath
+    - name: html
+      mountPath: /html
+```
+
+#### Defining a hostPath Volume
+
+```yml
+apiVersion: v1
+kind: Pod
+spec:
+  volumes: # Define a socket volume on host that points to /var/run/docker.sock
+  - name: docker-socket
+    hostPath:
+      path: /var/run/docker.sock
+      type: Socket
+  containers:
+  - name: docker
+    image: docker
+    command: ["sleep"]
+    args: ["100000"]
+    volumeMounts:
+    - name: docker-socket
+      mountPath: /var/run/docker.sock
+```
+
+- Valid hostPath types include:
+  - DirectoryOrCreate
+  - Directory
+  - FileOrCreate
+  - File
+  - Socket
+  - CharDevice
+  - BlockDevice
+
+#### Defining an Azure File Volume
+
+```yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+spec:
+  volumes: # Define initial Volume named "data" that is Azure File storage
+  - name: data
+    azureFile:
+      secretName: <azure-secret>
+      shareName: <share-name>
+      readOnly: false
+  containers:
+  - image: some-image
+    name: my-app
+    volumeMounts: # Reference "data" Volume and define a mountPath
+    - name: data
+      mountPath: /data/storage
+```
+
+#### Defining an AWS Volume
+
+```yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+spec:
+  volumes: # Define initial Volume named "data" that is an awsElasticBlockStore
+  - name: data
+    awsElasticBlockStore:
+      volumeID: <volume_ID>
+      fsType: ext4
+  containers:
+  - image: some-image
+    name: my-app
+    volumeMounts: # Reference "data" Volume and define a mountPath
+    - name: data
+      mountPath: /data/storage
+```
+
+#### Defining a Google Cloud gcePersistentDisk Volume
+
+```yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+spec:
+  volumes: # Define initial Volume named "data" that is a gcePersistentDisk
+  - name: data
+    gcePersistentDisk:
+      pdName: datastorage
+      fsType: ext4
+  containers:
+  - image: some-image
+    name: my-app
+    volumeMounts: # Reference "data" Volume and define a mountPath
+    - name: data
+      mountPath: /data/storage
+```
+
+### Viewing a Pod's Volumes
+
+```bash
+# Describe Pod
+kubectl describe pod [pod-name]
+
+# Get Pod YAML
+kubectl get pod [pod-name] -o yaml
+```
+
+### PersistentVolumes and PersistentVolumeClaims
+
+- A PersistentVolume (PV) is a cluster-wide storage unit provisioned by an administrator with a lifecycle independent from a Pod
+- A PersistentVolumeClaim (PVC) is a request for a storage unit (PV)
